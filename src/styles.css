@@ -30,3 +30,83 @@ button:active { transform: scale(.985); }
   main { max-width: 100% !important; }
   .rounded-2xl { break-inside: avoid; }
 }
+
+
+/* NÓS FINANCEIRO · VISUAL PREMIUM */
+:root {
+  --nos-base: #070d19;
+  --nos-panel: #10192a;
+  --nos-line: rgba(150,190,220,.13);
+  --nos-mint: #68e9cb;
+  --nos-violet: #9884ff;
+}
+html { background:var(--nos-base); }
+body { color:#ebf3ff; background:var(--nos-base); -webkit-font-smoothing:antialiased; }
+#root > div {
+  background:
+    radial-gradient(ellipse 44% 30% at 5% 2%, rgba(27,186,174,.16), transparent 100%),
+    radial-gradient(ellipse 48% 37% at 100% 8%, rgba(110,75,205,.14), transparent 100%),
+    radial-gradient(ellipse 40% 30% at 50% 68%, rgba(38,90,162,.045), transparent 100%),
+    linear-gradient(155deg,#070e1b 0%,#090f1e 55%,#070d18 100%) !important;
+}
+#root header { border-color:rgba(255,255,255,.075); }
+#root header h1 { letter-spacing:-.055em; background:linear-gradient(105deg,#fff 20%,#cde8ff 67%,#9ee9db); -webkit-background-clip:text;background-clip:text;color:transparent; }
+#root nav { border-color:rgba(255,255,255,.065); padding:4px 0 13px; }
+#root nav button {
+  border-radius:13px;
+  border:1px solid rgba(155,190,221,.10);
+  backdrop-filter: blur(10px);
+}
+#root nav button:hover { border-color:rgba(93,226,205,.28); }
+#root main > section > div.rounded-2xl,
+#root main > section > div > div.rounded-2xl,
+#root section[aria-label="Indicadores do mês"] > div {
+  border-color:rgba(170,201,235,.13);
+  background:linear-gradient(147deg,rgba(22,37,57,.91),rgba(13,24,43,.96));
+  box-shadow:0 14px 40px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.04);
+}
+.nos-panel {
+  background:linear-gradient(146deg,rgba(23,35,57,.94),rgba(12,23,41,.97));
+  border:1px solid rgba(159,194,230,.13);
+  box-shadow:0 15px 50px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.04);
+}
+.nos-hero {
+  position:relative; overflow:hidden; isolation:isolate;
+  background:linear-gradient(120deg,rgba(16,42,60,.98),rgba(16,27,52,.96) 52%,rgba(33,22,67,.93));
+  border:1px solid rgba(135,216,219,.23);
+  box-shadow:0 20px 65px rgba(3,7,20,.32), inset 0 1px 0 rgba(255,255,255,.065);
+}
+.nos-hero::before {
+  content:''; position:absolute; inset:-50% -14% auto auto; width:70%;height:165%;
+  background:radial-gradient(ellipse,rgba(135,87,248,.2),transparent 65%);
+  pointer-events:none;z-index:0;
+}
+.nos-hero::after {
+  content:'';position:absolute;inset:auto auto -140% -25%; width:80%;height:220%;
+  background:radial-gradient(ellipse,rgba(33,218,192,.21),transparent 70%);
+  pointer-events:none;z-index:0;
+}
+.nos-primary {
+ background:linear-gradient(108deg,#68e9cb 0%,#55d4dc 58%,#96bcfa 100%);
+ color:#061423; box-shadow:0 6px 22px rgba(46,212,191,.17);
+ transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;
+}
+.nos-primary:hover { filter:brightness(1.07);transform:translateY(-1px);box-shadow:0 9px 30px rgba(46,212,191,.24); }
+.nos-quick:hover { transform:translateY(-2px); }
+#root .recharts-cartesian-grid line { stroke:rgba(138,167,195,.12); }
+#root .recharts-surface { overflow:visible; }
+#root button:focus-visible, #root a:focus-visible, #root input:focus-visible {
+ outline:2px solid #68e9cb; outline-offset:3px;
+}
+@media (max-width:640px) {
+ #root > div { padding:14px !important; }
+ #root nav { margin-top:16px; }
+ .nos-panel { padding:17px; }
+ .nos-hero { padding:21px; }
+}
+@media (prefers-reduced-motion:reduce) {
+ *, *::before, *::after { scroll-behavior:auto !important; transition-duration:.01ms !important; animation-duration:.01ms !important; }
+}
+@media print {
+ .nos-hero, .nos-panel { background:#fff !important; box-shadow:none !important; color:#111 !important; }
+}
