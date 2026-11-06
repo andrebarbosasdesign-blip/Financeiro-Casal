@@ -11,6 +11,7 @@ Este projeto foi adaptado do dashboard React criado no Gemini. Mantém as funcio
 - Importação de JSON com validação de IDs duplicados, datas, valores e estrutura antes da confirmação.
 - Avisos para abates manuais superiores a pagamentos e receitas com alocação superior ao valor recebido.
 
+- **Cartões de crédito:** por padrão, um Nubank para Você e três para Ela (Nubank, Inter e Renner). A atualização completa cartões faltantes sem perder limites, IDs e assinaturas de cartões existentes.
 - Nova identidade visual: verde-água, azul-petróleo e detalhes violeta.
 - Corrigidos os totais de receitas/pagamentos para respeitar o mês selecionado e removidos valores salariais fixos nos comparativos.
 - Reserva de emergência considera despesas dos dois parceiros na fase atual.
