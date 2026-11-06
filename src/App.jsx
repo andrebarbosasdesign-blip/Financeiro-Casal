@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSharedContext } from './SharedContext.js';
 import { SHARED_KEY_SET } from './cloudMerge.js';
 import CloudToolbar from './CloudToolbar.jsx';
+import SmartOverview from './SmartOverview.jsx';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -278,6 +279,7 @@ export default function App() {
   const [incomesList, setIncomesList] = useLocalStorageState('app_incomes_list_v11', INITIAL_INCOMES);
   const [expensesList, setExpensesList] = useLocalStorageState('app_expenses_list_v11', INITIAL_EXPENSES);
   const [paymentChecklist, setPaymentChecklist] = useLocalStorageState('app_payment_checklist_v11', INITIAL_PAYMENT_SCHEDULE);
+  const [monthClosings, setMonthClosings] = useLocalStorageState('app_month_closings_v1', []);
   const [recurringRules, setRecurringRules] = useLocalStorageState('app_recurring_rules_v1', []);
   const [recurringSkipped, setRecurringSkipped] = useLocalStorageState('app_recurring_skipped_v1', []);
   const [newRecurring, setNewRecurring] = useState({ type: 'income', description: '', amount: '', day: 5, startMonth: getLocalMonthString(), responsible: 'Você', category: 'Moradia' });
@@ -1093,7 +1095,7 @@ export default function App() {
       cardSubs, portfolioAssets, goalsList, incomesList, expensesList, paymentChecklist,
       simYield, dividendYieldPct, simYears, initialContribution, annualStepUp, maxMonthlyContribution,
       realizedDeposits, selectedPhase, selectedMonth, activeTab, creditCards, voceAporte, emergencyCurrent, emergencyTargetMonths, targetWeights, earlyPayoff,
-      recurringRules, recurringSkipped, schemaVersion: 4,
+      recurringRules, recurringSkipped, monthClosings, schemaVersion: 5,
       exportedAt: new Date().toISOString()
     };
     const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json;charset=utf-8' });
@@ -1116,6 +1118,7 @@ export default function App() {
         try {
           const parsed = validateFinanceBackup(JSON.parse(e.target.result));
           if (!window.confirm(`Restaurar o backup com ${parsed.incomesList.length} receitas, ${parsed.expensesList.length} despesas e ${parsed.paymentChecklist.length} pagamentos? Isso substituirá os dados atuais ${sharedCloud ? 'para os dois participantes' : 'neste navegador'}.`)) return;
+          setMonthClosings(Array.isArray(parsed.monthClosings) ? parsed.monthClosings : []);
           if (parsed.recurringRules) setRecurringRules(parsed.recurringRules);
           else setRecurringRules([]);
           if (parsed.recurringSkipped) setRecurringSkipped(parsed.recurringSkipped);
@@ -1155,6 +1158,7 @@ export default function App() {
     if (sharedCloud && !window.confirm('ATENÇÃO: isso apaga os lançamentos compartilhados dos DOIS participantes. Faça um backup antes. Deseja continuar?')) return;
     if (window.confirm('ATENÇÃO: deseja apagar os lançamentos e voltar ao modelo vazio? Exporte um backup JSON antes de continuar.')) {
       setCardSubs(INITIAL_CREDIT_CARD_SUBSCRIPTIONS);
+      setMonthClosings([]);
       setRecurringRules([]);
       setRecurringSkipped([]);
       setPortfolioAssets(INITIAL_PORTFOLIO_ASSETS);
@@ -1196,7 +1200,7 @@ export default function App() {
             </span>
           </div>
           <p className="text-xs text-[#94A3B8] mt-1">
-            Seu espaço para organizar o presente e planejar o futuro, juntos.
+            Dois caminhos, um futuro. Sua vida financeira com mais clareza.
           </p>
         </div>
 
@@ -1263,16 +1267,16 @@ export default function App() {
       {/* NAVEGAÇÃO */}
       <nav className="max-w-7xl mx-auto my-6 flex items-center gap-2 overflow-x-auto pb-2 border-b border-[#121F31]">
         {[
-          { id: 'dashboard', label: 'Dashboard Principal', Icon: BarChartIcon },
-          { id: 'recebimentos', label: 'Recebimentos (Entradas)', Icon: WalletIcon },
+          { id: 'dashboard', label: 'Visão geral', Icon: BarChartIcon },
+          { id: 'recebimentos', label: 'Recebimentos', Icon: WalletIcon },
           { id: 'recorrencias', label: 'Recorrências', Icon: RefreshIcon },
-          { id: 'despesas', label: 'Mestre de Despesas', Icon: FileTextIcon },
-          { id: 'cronograma', label: 'Cronograma & Checklist', Icon: CheckIcon },
-          { id: 'investimentos', label: 'Investimentos & Step-Up (30 Anos)', Icon: TrendingUpIcon },
-          { id: 'carteira', label: 'Carteira de Investimentos', Icon: BriefcaseIcon },
-          { id: 'metas', label: 'Metas de Investimentos', Icon: TargetIcon },
-          { id: 'comparativo', label: 'Comparativo de Modelos', Icon: UsersIcon },
-          { id: 'relatorio', label: 'Relatório Executivo', Icon: PrinterIcon }
+          { id: 'despesas', label: 'Despesas', Icon: FileTextIcon },
+          { id: 'cronograma', label: 'Pagamentos', Icon: CheckIcon },
+          { id: 'investimentos', label: 'Projeções', Icon: TrendingUpIcon },
+          { id: 'carteira', label: 'Carteira', Icon: BriefcaseIcon },
+          { id: 'metas', label: 'Metas', Icon: TargetIcon },
+          { id: 'comparativo', label: 'Comparativo', Icon: UsersIcon },
+          { id: 'relatorio', label: 'Relatórios', Icon: PrinterIcon }
         ].map((tab) => {
           const IconComponent = tab.Icon;
           return (
@@ -1299,9 +1303,21 @@ export default function App() {
           <input id="selected-month" type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-[#07111F] border border-[#294357] text-white rounded-lg px-3 py-2 text-sm" />
           <span className="text-[10px] text-slate-500">Controle por mês. Contas fixas do planejamento continuam organizadas por fase.</span>
         </div>
-        <span className="text-[11px] text-teal-300 font-medium">● Modo local · sem login e sem sincronização entre aparelhos</span>
+        <span className="text-[11px] text-teal-300 font-medium">{sharedCloud ? "● Espaço compartilhado · sincronização ativa" : "● Modo local · não sincronizado"}</span>
       </section>
 
+      <div className="max-w-7xl mx-auto">
+        <SmartOverview
+          month={selectedMonth} incomes={incomesList} payments={paymentChecklist}
+          cards={creditCards} items={cardSubs} assets={portfolioAssets}
+          closings={monthClosings} setClosings={setMonthClosings}
+          onIncome={() => setIsIncomeModalOpen(true)}
+          onPayment={() => setIsAddPayModalOpen(true)}
+          onRecurring={() => setActiveTab('recorrencias')}
+          onInvest={() => setActiveTab('carteira')}
+          onGoals={() => setActiveTab('metas')}
+        />
+      </div>
       <section className="max-w-7xl mx-auto mb-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3" aria-label="Indicadores do mês">
         {[
           { label: 'Receitas previstas', value: monthlyCash.plannedIncome, color: 'text-teal-300', note: 'Todos os recebimentos do mês' },
@@ -1511,7 +1527,7 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   <CreditCardIcon className="w-5 h-5 text-[#2DD4BF]" />
-                  Gerenciamento de Cartões de Crédito (Limites & Gastos)
+                  Cartões de crédito · limites e itens registrados
                 </h3>
                 <span className="text-xs text-[#94A3B8]">Ajuste os limites dos cartões de cada um em tempo real</span>
               </div>
