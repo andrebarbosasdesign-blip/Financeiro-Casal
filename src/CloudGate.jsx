@@ -27,15 +27,34 @@ export default function CloudGate() {
   useEffect(() => {
     if (!cloudClient) return;
     let mounted = true;
-    cloudClient.auth.getUser().then(({ data, error }) => {
-      if (mounted) { setUser(data?.user || null); setError(error ? cloudErrorMessage(error) : ''); }
-    });
+    // A tela de login deve funcionar mesmo se a restauração da sessão demorar ou falhar.
+    // getSession é local, diferentemente de getUser, que precisa de uma chamada à rede.
+    const safetyTimeout = window.setTimeout(() => {
+      if (!mounted) return;
+      setUser(current => current === undefined ? null : current);
+      setLoading(false);
+      setError(current => current || 'Não foi possível verificar a sessão. Você pode tentar entrar novamente.');
+    }, 8000);
+    cloudClient.auth.getSession()
+      .then(({ data, error }) => {
+        if (!mounted) return;
+        if (error) setError(cloudErrorMessage(error));
+        setUser(data?.session?.user || null);
+        setLoading(false);
+      })
+      .catch(e => {
+        if (!mounted) return;
+        setUser(null);
+        setLoading(false);
+        setError(cloudErrorMessage(e));
+      });
     const { data: { subscription } } = cloudClient.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return;
       setUser(session?.user || null);
+      setLoading(false);
       if (!session?.user) { setWorkspace(null); setRemote(null); }
     });
-    return () => { mounted = false; subscription.unsubscribe(); };
+    return () => { mounted = false; window.clearTimeout(safetyTimeout); subscription.unsubscribe(); };
   }, []);
 
   const loadWorkspace = useCallback(async (skipInvite = false) => {
@@ -118,7 +137,7 @@ export default function CloudGate() {
     {inviteValue && <p className="mb-4 rounded-lg bg-teal-950/50 p-3 text-xs text-teal-200">Convite recebido. Crie sua própria conta ou faça login com o e-mail convidado.</p>}
     <label className="mb-1 block text-sm" htmlFor="cloud-email">E-mail</label><input id="cloud-email" className={input} type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} />
     <label className="mb-1 mt-4 block text-sm" htmlFor="cloud-pass">Senha</label><input id="cloud-pass" className={input} type="password" required minLength={8} autoComplete={mode==='register'?'new-password':'current-password'} value={password} onChange={e => setPassword(e.target.value)} />
-    <button className={`${primary} mt-5 w-full`} disabled={loading}>{mode === 'register' ? 'Criar minha conta' : 'Entrar'}</button>
+    <button className={`${primary} mt-5 w-full`} disabled={loading} aria-busy={loading}>{loading ? 'Aguarde…' : (mode === 'register' ? 'Criar minha conta' : 'Entrar')}</button>
     <button className="mt-4 w-full text-sm text-teal-300 underline" type="button" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>{mode === 'login' ? 'Criar uma conta' : 'Já tenho uma conta'}</button>
     {error && <p role="status" className="mt-4 text-sm text-amber-300">{error}</p>}
   </form></div>;
