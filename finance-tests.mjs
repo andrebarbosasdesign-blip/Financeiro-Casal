@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import { buildRecurringEntries, cashHistory, allocationWarnings, monthCashSummary, monthDate, validateFinanceBackup } from './src/financeUtils.js';
+
+const incomeRule = { id:'salario', type:'income',description:'Salário',amount:2000,day:31,startMonth:'2026-11',enabled:true,responsible:'Ela' };
+const paymentRule = { id:'aluguel', type:'payment',description:'Aluguel',amount:800,day:31,startMonth:'2026-11',enabled:true,category:'Moradia' };
+assert.equal(monthDate('2027-02',31),'2027-02-28');
+const first = buildRecurringEntries([incomeRule,paymentRule],'2027-02',[],[]);
+assert.equal(first.incomes.length,1); assert.equal(first.payments.length,1);
+assert.equal(first.incomes[0].date,'2027-02-28');
+assert.equal(first.incomes[0].isReceived,false);
+assert.equal(buildRecurringEntries([incomeRule,paymentRule],'2027-02',first.incomes,first.payments).incomes.length,0);
+assert.equal(buildRecurringEntries([incomeRule,paymentRule],'2027-02',[],[],[first.payments[0].id]).payments.length,0);
+assert.equal(buildRecurringEntries([incomeRule],'2027-02',[{id:'manual-1',description:'Salário',amount:2000,date:'2027-02-28'}],[]).incomes.length,0);
+assert.equal(buildRecurringEntries([paymentRule],'2027-02',[],[{id:'manual-2',description:'Aluguel',amount:800,dueDate:'2027-02-28'}]).payments.length,0);
+assert.equal(buildRecurringEntries([incomeRule,paymentRule],'2026-10',[],[]).incomes.length,0);
+const summary = monthCashSummary('2027-02',[{...first.incomes[0],isReceived:true}], [{...first.payments[0],isPaid:true}]);
+assert.equal(summary.confirmedNet,1200); assert.equal(summary.plannedNet,1200);
+assert.equal(cashHistory('2027-02',first.incomes,first.payments,2)[0].month,'2027-01');
+assert.equal(allocationWarnings([], [{...first.payments[0],manualAllocations:{abc:900}}],'2027-02').length>0,true);
+const valid={incomesList:[],expensesList:[],paymentChecklist:[]};
+assert.doesNotThrow(()=>validateFinanceBackup(valid));
+assert.throws(()=>validateFinanceBackup({...valid,incomesList:[{id:'1',description:'A',date:'2026-02-31',amount:50}]}),/Data inválida/);
+assert.throws(()=>validateFinanceBackup({...valid,paymentChecklist:[{id:'a',amount:1},{id:'a',amount:1}]}),/duplicados/);
+console.log('12 finance checks passed');

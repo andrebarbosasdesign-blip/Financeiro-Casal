@@ -1,0 +1,25 @@
+name: Validar NÓS Financeiro
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [melhorias-dashboard-v2]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Testar regras financeiras
+        run: npm test
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+      - name: Compilar aplicação
+        run: npm run build

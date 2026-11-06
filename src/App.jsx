@@ -15,6 +15,7 @@ import {
   Tooltip,
   Legend
 } from 'recharts';
+import { buildRecurringEntries, cashHistory, monthCashSummary, allocationWarnings, validateFinanceBackup } from './financeUtils.js';
 
 
 // ============================================================================
@@ -267,6 +268,10 @@ export default function App() {
   const [incomesList, setIncomesList] = useLocalStorageState('app_incomes_list_v11', INITIAL_INCOMES);
   const [expensesList, setExpensesList] = useLocalStorageState('app_expenses_list_v11', INITIAL_EXPENSES);
   const [paymentChecklist, setPaymentChecklist] = useLocalStorageState('app_payment_checklist_v11', INITIAL_PAYMENT_SCHEDULE);
+  const [recurringRules, setRecurringRules] = useLocalStorageState('app_recurring_rules_v1', []);
+  const [recurringSkipped, setRecurringSkipped] = useLocalStorageState('app_recurring_skipped_v1', []);
+  const [newRecurring, setNewRecurring] = useState({ type: 'income', description: '', amount: '', day: 5, startMonth: getLocalMonthString(), responsible: 'Você', category: 'Moradia' });
+
 
   // Expanded allocation drawer state per payment item
   const [expandedAllocPayId, setExpandedAllocPayId] = useState(null);
@@ -302,7 +307,7 @@ export default function App() {
   const [newSub, setNewSub] = useState({ name: '', amount: '', category: 'Geral', cardId: 'card-1' });
 
   const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
-  const [newInc, setNewInc] = useState({ description: '', amount: '', date: getLocalDateString(), responsible: 'Você' });
+  const [newInc, setNewInc] = useState({ description: '', amount: '', date: getLocalDateString(), responsible: 'Você', isReceived: false });
   const [editingIncomeId, setEditingIncomeId] = useState(null);
   const [editingIncomeDesc, setEditingIncomeDesc] = useState('');
   const [editingIncomeAmount, setEditingIncomeAmount] = useState('');
@@ -340,7 +345,45 @@ export default function App() {
 
   useEffect(() => {
     setLastSaved(new Date().toLocaleTimeString('pt-BR'));
-  }, [cardSubs, portfolioAssets, goalsList, incomesList, expensesList, paymentChecklist, creditCards, voceAporte, simYield, initialContribution, annualStepUp, maxMonthlyContribution, realizedDeposits, emergencyCurrent, emergencyTargetMonths, targetWeights, earlyPayoff, selectedMonth, dividendYieldPct]);
+  }, [cardSubs, portfolioAssets, goalsList, incomesList, expensesList, paymentChecklist, creditCards, voceAporte, simYield, initialContribution, annualStepUp, maxMonthlyContribution, realizedDeposits, emergencyCurrent, emergencyTargetMonths, targetWeights, earlyPayoff, selectedMonth, dividendYieldPct, recurringRules, recurringSkipped]);
+
+  // Gera somente os lançamentos do mês visitado. IDs determinísticos evitam duplicidade;
+  // exclusões são guardadas em recurringSkipped para não reaparecerem.
+  useEffect(() => {
+    const generated = buildRecurringEntries(recurringRules, selectedMonth, incomesList, paymentChecklist, recurringSkipped);
+    if (generated.incomes.length) {
+      setIncomesList(prev => {
+        const known = new Set(prev.map(x => x.id));
+        return [...prev, ...generated.incomes.filter(x => !known.has(x.id))];
+      });
+    }
+    if (generated.payments.length) {
+      setPaymentChecklist(prev => {
+        const known = new Set(prev.map(x => x.id));
+        return [...prev, ...generated.payments.filter(x => !known.has(x.id))];
+      });
+    }
+  // As listas são consultadas ao mudar mês/regras, mas não devem disparar a geração a cada digitação.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMonth, recurringRules, recurringSkipped]);
+
+  const handleAddRecurring = (event) => {
+    event.preventDefault();
+    const value = Number(newRecurring.amount);
+    if (!newRecurring.description.trim() || !Number.isFinite(value) || value <= 0 || !Number.isInteger(Number(newRecurring.day)) || Number(newRecurring.day) < 1 || Number(newRecurring.day) > 31 || !/^\d{4}-(0[1-9]|1[0-2])$/.test(newRecurring.startMonth)) {
+      alert('Preencha a descrição, o valor, o mês inicial e o dia de 1 a 31.');
+      return;
+    }
+    const similar = recurringRules.find(rule => rule.enabled && rule.type === newRecurring.type && rule.description.trim().toLowerCase() === newRecurring.description.trim().toLowerCase());
+    if (similar && !window.confirm('Já há uma regra com nome semelhante. Deseja criar outra mesmo assim?')) return;
+    setRecurringRules(prev => [...prev, { ...newRecurring, id: `rule-${Date.now()}-${Math.floor(Math.random() * 10000)}`, description: newRecurring.description.trim(), amount: value, day: Number(newRecurring.day), enabled: true }]);
+    setNewRecurring(prev => ({ ...prev, description: '', amount: '' }));
+  };
+
+  const handleRemoveRecurring = (id) => {
+    if (!window.confirm('Excluir a regra recorrente? Lançamentos dos meses anteriores serão preservados.')) return;
+    setRecurringRules(prev => prev.filter(rule => rule.id !== id));
+  };
 
   // Direct Handlers for Cronograma Payments (Fast Inline Value & Allocation Updates)
   const handleUpdatePaymentAmount = (id, newAmount) => {
@@ -356,6 +399,11 @@ export default function App() {
           delete currentAlloc[incId];
         } else {
           const numericVal = Math.max(0, Number(val) || 0);
+          const sumOthers = Object.entries(currentAlloc).filter(([id]) => id !== incId).reduce((total, [, amount]) => total + Math.max(0, Number(amount) || 0), 0);
+          if (sumOthers + numericVal > Number(item.amount) + 0.005) {
+            alert('A soma dos abates manuais não pode ser maior que o valor do pagamento.');
+            return item;
+          }
           currentAlloc[incId] = numericVal;
         }
         return { ...item, manualAllocations: currentAlloc };
@@ -375,7 +423,9 @@ export default function App() {
   };
 
   const handleDeletePaymentItem = (id) => {
-    setPaymentChecklist(paymentChecklist.filter(item => item.id !== id));
+    const entry = paymentChecklist.find(item => item.id === id);
+    if (entry?.recurringRuleId) setRecurringSkipped(prev => [...new Set([...prev, id])]);
+    setPaymentChecklist(prev => prev.filter(item => item.id !== id));
   };
 
   const handleTogglePaid = (id) => {
@@ -412,6 +462,11 @@ export default function App() {
   };
 
   const handleSaveEditPayment = (id) => {
+    const manualSum = Object.values(editingPayManualAllocations).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
+    if (manualSum > Number(editingPayAmount) + 0.005) {
+      alert('A soma das alocações manuais ultrapassa o valor do pagamento.');
+      return;
+    }
     let matchedName = 'Geral';
     if (editingPayIncomeId) {
       const ids = editingPayIncomeId.split(',');
@@ -526,6 +581,10 @@ export default function App() {
       .reduce((acc, curr) => acc + Math.max(0, Number(curr.amount) || 0), 0),
   [monthPayments]);
 
+  const monthlyCash = useMemo(() => monthCashSummary(selectedMonth, incomesList, paymentChecklist), [selectedMonth, incomesList, paymentChecklist]);
+  const historyData = useMemo(() => cashHistory(selectedMonth, incomesList, paymentChecklist, 12), [selectedMonth, incomesList, paymentChecklist]);
+  const warnings = useMemo(() => allocationWarnings(incomesList, paymentChecklist, selectedMonth), [incomesList, paymentChecklist, selectedMonth]);
+  const overCommitted = incomeAllocationBreakdown.filter(x => x.remainingBalance < -0.005);
   const totalPendingAmount = totalScheduledPayments - totalPaidAmount;
   const paymentProgressPct = totalScheduledPayments > 0 ? ((totalPaidAmount / totalScheduledPayments) * 100).toFixed(0) : 0;
 
@@ -858,10 +917,11 @@ export default function App() {
       description: newInc.description,
       amount: Number(newInc.amount),
       date: newInc.date || getLocalDateString(),
-      responsible: newInc.responsible || 'Você'
+      responsible: newInc.responsible || 'Você',
+      isReceived: Boolean(newInc.isReceived)
     };
     setIncomesList([...incomesList, item]);
-    setNewInc({ description: '', amount: '', date: getLocalDateString(), responsible: 'Você' });
+    setNewInc({ description: '', amount: '', date: getLocalDateString(), responsible: 'Você', isReceived: false });
     setIsIncomeModalOpen(false);
   };
 
@@ -890,7 +950,13 @@ export default function App() {
   };
 
   const handleDeleteIncome = (id) => {
-    setIncomesList(incomesList.filter(i => i.id !== id));
+    const entry = incomesList.find(item => item.id === id);
+    if (entry?.recurringRuleId) setRecurringSkipped(prev => [...new Set([...prev, id])]);
+    setIncomesList(prev => prev.filter(i => i.id !== id));
+  };
+
+  const handleToggleIncomeReceived = (id) => {
+    setIncomesList(prev => prev.map(inc => inc.id === id ? { ...inc, isReceived: inc.isReceived !== true } : inc));
   };
 
   // Expenses Handlers
@@ -1016,7 +1082,8 @@ export default function App() {
     const backupData = {
       cardSubs, portfolioAssets, goalsList, incomesList, expensesList, paymentChecklist,
       simYield, dividendYieldPct, simYears, initialContribution, annualStepUp, maxMonthlyContribution,
-      realizedDeposits, selectedPhase, selectedMonth, activeTab, creditCards, voceAporte, emergencyCurrent, emergencyTargetMonths, targetWeights, earlyPayoff, schemaVersion: 3,
+      realizedDeposits, selectedPhase, selectedMonth, activeTab, creditCards, voceAporte, emergencyCurrent, emergencyTargetMonths, targetWeights, earlyPayoff,
+      recurringRules, recurringSkipped, schemaVersion: 4,
       exportedAt: new Date().toISOString()
     };
     const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json;charset=utf-8' });
@@ -1037,13 +1104,12 @@ export default function App() {
       fileReader.readAsText(event.target.files[0], "UTF-8");
       fileReader.onload = (e) => {
         try {
-          const parsed = JSON.parse(e.target.result);
-          if (!parsed || typeof parsed !== 'object' ||
-              !Array.isArray(parsed.incomesList) || !Array.isArray(parsed.expensesList) ||
-              !Array.isArray(parsed.paymentChecklist)) {
-            throw new Error('Backup incompatível: receitas, despesas ou pagamentos ausentes.');
-          }
+          const parsed = validateFinanceBackup(JSON.parse(e.target.result));
           if (!window.confirm(`Restaurar o backup com ${parsed.incomesList.length} receitas, ${parsed.expensesList.length} despesas e ${parsed.paymentChecklist.length} pagamentos? Isso substituirá os dados atuais neste navegador.`)) return;
+          if (parsed.recurringRules) setRecurringRules(parsed.recurringRules);
+          else setRecurringRules([]);
+          if (parsed.recurringSkipped) setRecurringSkipped(parsed.recurringSkipped);
+          else setRecurringSkipped([]);
           if (parsed.cardSubs) setCardSubs(parsed.cardSubs);
           if (parsed.portfolioAssets) setPortfolioAssets(parsed.portfolioAssets);
           if (parsed.goalsList) setGoalsList(parsed.goalsList);
@@ -1068,7 +1134,7 @@ export default function App() {
           if (parsed.activeTab) setActiveTab(parsed.activeTab);
         } catch (err) {
           console.error('Erro ao importar backup:', err);
-          alert('Não foi possível importar o backup. Verifique se o arquivo JSON é válido.');
+          alert(`Não foi possível importar o backup. ${err.message || 'Arquivo incompatível.'}`);
         }
       };
       fileReader.onloadend = () => { event.target.value = ''; };
@@ -1078,6 +1144,8 @@ export default function App() {
   const handleResetToDefaults = () => {
     if (window.confirm('ATENÇÃO: deseja apagar seus lançamentos locais e voltar ao modelo vazio? Exporte um backup JSON antes de continuar.')) {
       setCardSubs(INITIAL_CREDIT_CARD_SUBSCRIPTIONS);
+      setRecurringRules([]);
+      setRecurringSkipped([]);
       setPortfolioAssets(INITIAL_PORTFOLIO_ASSETS);
       setGoalsList(INITIAL_GOALS);
       setIncomesList(INITIAL_INCOMES);
@@ -1180,11 +1248,12 @@ export default function App() {
           <button type="button" onClick={() => fileInputRef.current?.click()} className="whitespace-nowrap rounded-xl bg-teal-400 px-4 py-2.5 text-xs font-black text-[#07111F] hover:bg-teal-300 transition-colors">Importar meu backup</button>
         </section>
       )}
-      {/* NAVEGAÇÃO DE ABAS (9 ABAS COMPLETAS) */}
+      {/* NAVEGAÇÃO */}
       <nav className="max-w-7xl mx-auto my-6 flex items-center gap-2 overflow-x-auto pb-2 border-b border-[#121F31]">
         {[
           { id: 'dashboard', label: 'Dashboard Principal', Icon: BarChartIcon },
           { id: 'recebimentos', label: 'Recebimentos (Entradas)', Icon: WalletIcon },
+          { id: 'recorrencias', label: 'Recorrências', Icon: RefreshIcon },
           { id: 'despesas', label: 'Mestre de Despesas', Icon: FileTextIcon },
           { id: 'cronograma', label: 'Cronograma & Checklist', Icon: CheckIcon },
           { id: 'investimentos', label: 'Investimentos & Step-Up (30 Anos)', Icon: TrendingUpIcon },
@@ -1216,17 +1285,17 @@ export default function App() {
         <div className="flex flex-wrap items-center gap-3">
           <label className="text-xs font-bold text-slate-300" htmlFor="selected-month">Mês de referência</label>
           <input id="selected-month" type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="bg-[#07111F] border border-[#294357] text-white rounded-lg px-3 py-2 text-sm" />
-          <span className="text-[10px] text-slate-500">Receitas e pagamentos são filtrados pelo mês selecionado; despesas seguem as fases cadastradas.</span>
+          <span className="text-[10px] text-slate-500">Controle por mês. Contas fixas do planejamento continuam organizadas por fase.</span>
         </div>
         <span className="text-[11px] text-teal-300 font-medium">● Modo local · sem login e sem sincronização entre aparelhos</span>
       </section>
 
       <section className="max-w-7xl mx-auto mb-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3" aria-label="Indicadores do mês">
         {[
-          { label: 'Receitas do mês', value: rendaTotalConjunta, color: 'text-teal-300', note: 'Lançamentos do mês selecionado' },
-          { label: 'Contas agendadas', value: totalScheduledPayments, color: 'text-white', note: 'Cronograma, sem somar às despesas' },
-          { label: 'Ainda em aberto', value: totalPendingAmount, color: 'text-amber-300', note: 'Pagamentos não quitados' },
-          { label: 'Saldo planejado', value: rendaTotalConjunta - despesasTotaisConjuntas - poteTotalConjunto, color: 'text-violet-300', note: 'Receitas menos despesas e aportes' }
+          { label: 'Receitas previstas', value: monthlyCash.plannedIncome, color: 'text-teal-300', note: 'Todos os recebimentos do mês' },
+          { label: 'Receitas confirmadas', value: monthlyCash.confirmedIncome, color: 'text-emerald-300', note: 'Marque como recebido na aba de entradas' },
+          { label: 'Pagamentos quitados', value: monthlyCash.paidPayments, color: 'text-white', note: 'Contas marcadas como pagas no cronograma' },
+          { label: 'Saldo confirmado', value: monthlyCash.confirmedNet, color: monthlyCash.confirmedNet >= 0 ? 'text-emerald-300' : 'text-rose-300', note: 'Confirmados − quitados (não inclui despesas mestre novamente)' }
         ].map(kpi => (
           <div key={kpi.label} className="rounded-2xl border border-[#294357] bg-[#121F31] p-4 shadow-sm">
             <p className="text-[10px] tracking-widest uppercase font-bold text-slate-400">{kpi.label}</p>
@@ -1234,6 +1303,25 @@ export default function App() {
             <p className="text-[10px] text-slate-500 mt-2">{kpi.note}</p>
           </div>
         ))}
+      </section>
+
+      <section className="max-w-7xl mx-auto mb-6 space-y-3" aria-label="Resumo de caixa e alertas">
+        <div className="rounded-2xl border border-[#294357] bg-[#0E1C2E] p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold text-white">Planejamento do mês: <span className="text-teal-300">{fmt(monthlyCash.plannedNet)}</span></p>
+            <p className="text-[11px] text-slate-400 mt-1">Receitas previstas − pagamentos do cronograma. As despesas mestre são outra visão do mesmo orçamento e não são descontadas novamente.</p>
+          </div>
+          <button onClick={() => setActiveTab('recorrencias')} type="button" className="shrink-0 px-3 py-2 rounded-lg bg-teal-400/15 text-teal-200 border border-teal-400/30 text-xs font-bold hover:bg-teal-400/25">Gerenciar recorrências</button>
+        </div>
+        {(warnings.length > 0 || overCommitted.length > 0) && (
+          <div className="rounded-2xl border border-amber-500/40 bg-amber-950/20 p-4 text-xs text-amber-100" role="alert">
+            <p className="font-black mb-2">Verifique as alocações de receitas</p>
+            <ul className="space-y-1 list-disc pl-4">
+              {overCommitted.map(inc => <li key={inc.id}>“{inc.description}”: alocados {fmt(inc.totalAllocated)} para uma receita de {fmt(inc.amount)}.</li>)}
+              {warnings.slice(0, 6).map((warning, index) => <li key={index}>{warning}</li>)}
+            </ul>
+          </div>
+        )}
       </section>
 
       {/* CONTAINER DE CONTEÚDO PRINCIPAL */}
@@ -1244,6 +1332,29 @@ export default function App() {
         {/* ==================================================================== */}
         {activeTab === 'dashboard' && (
           <section className="space-y-6">
+            <div className="bg-[#121F31] rounded-2xl border border-[#294357] p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-bold text-white">Evolução financeira • últimos 12 meses</h2>
+                  <p className="text-xs text-slate-400 mt-1">Dados do cronograma e recebimentos já registrados. “Confirmado” depende de marcar as entradas como recebidas.</p>
+                </div>
+                <span className="text-[10px] font-semibold px-3 py-1 rounded-full bg-[#07111F] text-teal-200">Sem duplicar despesas fixas</span>
+              </div>
+              <div className="h-64 w-full min-w-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={historyData} margin={{ top: 6, right: 6, bottom: 3, left: 0 }}>
+                    <CartesianGrid stroke="#26364B" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fill: '#94A3B8', fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: '#94A3B8', fontSize: 10 }} axisLine={false} tickLine={false} width={55} tickFormatter={value => `${(value / 1000).toFixed(0)}k`} />
+                    <Tooltip formatter={(value, name) => [fmt(value), name]} contentStyle={{ background: '#0E1C2E', borderColor: '#294357', borderRadius: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: '11px' }} />
+                    <Bar dataKey="plannedIncome" name="Receita prevista" fill="#38BDF8" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="confirmedIncome" name="Receita confirmada" fill="#2DD4BF" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="paidPayments" name="Pagamentos quitados" fill="#F59E0B" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
             {/* SELETOR DE FASES DE PLANEJAMENTO */}
             <div className="bg-[#121F31] p-5 rounded-2xl border border-[#294357] space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1573,7 +1684,7 @@ export default function App() {
                   Gerenciador de Recebimentos & Lotes de Salário
                 </h2>
                 <p className="text-xs text-[#94A3B8]">
-                  Edite, adicione ou ajuste as parcelas de pagamento de cada titular.
+                  Separe o que está previsto do que já entrou na conta. Entradas importadas de backups antigos começam como previstas até você confirmar.
                 </p>
               </div>
               <button
@@ -1589,19 +1700,19 @@ export default function App() {
             {/* KPIS DE RECEITA SEPARADA POR TITULAR */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-[#121F31] p-4 rounded-2xl border border-[#2DD4BF]/40 space-y-1">
-                <span className="text-[11px] font-bold uppercase text-[#2DD4BF]">Total Recebido por Você</span>
+                <span className="text-[11px] font-bold uppercase text-[#2DD4BF]">Previsto para você</span>
                 <strong className="text-xl font-extrabold text-[#2DD4BF] block">{fmt(voceIncome)}</strong>
                 <span className="text-[10px] text-[#94A3B8]">Soma de todas as suas parcelas</span>
               </div>
 
               <div className="bg-[#121F31] p-4 rounded-2xl border border-purple-500/30 space-y-1">
-                <span className="text-[11px] font-bold uppercase text-purple-400">Total Recebido por Ela</span>
+                <span className="text-[11px] font-bold uppercase text-purple-400">Previsto para ela</span>
                 <strong className="text-xl font-extrabold text-purple-400 block">{fmt(elaIncome)}</strong>
                 <span className="text-[10px] text-[#94A3B8]">Soma de todas as parcelas dela</span>
               </div>
 
               <div className="bg-[#121F31] p-4 rounded-2xl border border-emerald-500/30 space-y-1">
-                <span className="text-[11px] font-bold uppercase text-emerald-400">Receita Conjunta Somada</span>
+                <span className="text-[11px] font-bold uppercase text-emerald-400">Receita prevista conjunta</span>
                 <strong className="text-xl font-extrabold text-emerald-400 block">{fmt(rendaTotalConjunta)}</strong>
                 <span className="text-[10px] text-[#94A3B8]">Entrada total do casal no mês</span>
               </div>
@@ -1623,6 +1734,7 @@ export default function App() {
                       <th className="p-3.5">Descrição do Lote</th>
                       <th className="p-3.5">Valor (R$)</th>
                       <th className="p-3.5">Titular</th>
+                      <th className="p-3.5">Situação</th>
                       <th className="p-3.5 text-right">Ações</th>
                     </tr>
                   </thead>
@@ -1664,6 +1776,13 @@ export default function App() {
                             {inc.responsible}
                           </span>
                         </td>
+                        <td className="p-3.5">
+                          <button type="button" onClick={() => handleToggleIncomeReceived(inc.id)}
+                            aria-label={`Alternar recebimento: ${inc.description}`}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${inc.isReceived === true ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-200'}`}>
+                            {inc.isReceived === true ? '✓ Recebido' : '◷ Previsto'}
+                          </button>
+                        </td>
                         <td className="p-3.5 text-right space-x-2">
                           {editingIncomeId === inc.id ? (
                             <button
@@ -1695,6 +1814,77 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'recorrencias' && (
+          <section className="space-y-5">
+            <div className="p-5 rounded-2xl border border-teal-500/30 bg-[#121F31]">
+              <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+                <div>
+                  <h2 className="text-lg font-black text-white flex items-center gap-2"><RefreshIcon className="w-5 h-5 text-teal-300" /> Contas e receitas recorrentes</h2>
+                  <p className="text-xs text-slate-400 mt-1">Uma regra cria automaticamente um lançamento ao visitar cada mês, sem duplicações. O pagamento ou recebimento só vira realizado quando você confirmar.</p>
+                </div>
+                <span className="text-xs text-teal-200 border border-teal-500/30 rounded-full px-3 py-1">{recurringRules.filter(x => x.enabled).length} ativas</span>
+              </div>
+              <form onSubmit={handleAddRecurring} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+                <label className="text-xs text-slate-400">Tipo
+                  <select value={newRecurring.type} onChange={e => setNewRecurring(prev => ({...prev,type:e.target.value}))} className="block mt-1 w-full p-2.5 rounded-xl bg-[#07111F] border border-[#294357] text-white">
+                    <option value="income">Receita mensal</option><option value="payment">Conta mensal</option>
+                  </select>
+                </label>
+                <label className="text-xs text-slate-400">Descrição
+                  <input required maxLength={250} value={newRecurring.description} onChange={e => setNewRecurring(prev => ({...prev,description:e.target.value}))} placeholder="Ex.: Salário, aluguel" className="block mt-1 w-full p-2.5 rounded-xl bg-[#07111F] border border-[#294357] text-white" />
+                </label>
+                <label className="text-xs text-slate-400">Valor (R$)
+                  <input required type="number" min="0.01" step="0.01" value={newRecurring.amount} onChange={e => setNewRecurring(prev => ({...prev,amount:e.target.value}))} className="block mt-1 w-full p-2.5 rounded-xl bg-[#07111F] border border-[#294357] text-white" />
+                </label>
+                <label className="text-xs text-slate-400">Dia do mês
+                  <input required type="number" min="1" max="31" value={newRecurring.day} onChange={e => setNewRecurring(prev => ({...prev,day:e.target.value}))} className="block mt-1 w-full p-2.5 rounded-xl bg-[#07111F] border border-[#294357] text-white" />
+                </label>
+                <label className="text-xs text-slate-400">A partir do mês
+                  <input required type="month" value={newRecurring.startMonth} onChange={e => setNewRecurring(prev => ({...prev,startMonth:e.target.value}))} className="block mt-1 w-full p-2.5 rounded-xl bg-[#07111F] border border-[#294357] text-white" />
+                </label>
+                {newRecurring.type === 'income' ? (
+                  <label className="text-xs text-slate-400">Responsável
+                    <select value={newRecurring.responsible} onChange={e => setNewRecurring(prev => ({...prev,responsible:e.target.value}))} className="block mt-1 w-full p-2.5 rounded-xl bg-[#07111F] border border-[#294357] text-white"><option>Você</option><option>Ela</option></select>
+                  </label>
+                ) : (
+                  <label className="text-xs text-slate-400">Categoria
+                    <select value={newRecurring.category} onChange={e => setNewRecurring(prev => ({...prev,category:e.target.value}))} className="block mt-1 w-full p-2.5 rounded-xl bg-[#07111F] border border-[#294357] text-white">
+                      {['Moradia','Alimentação','Educação','Transporte','Dívidas','Cartão','Investimentos','Outros'].map(cat => <option key={cat}>{cat}</option>)}
+                    </select>
+                  </label>
+                )}
+                <button type="submit" className="lg:col-span-2 px-4 py-2.5 rounded-xl bg-teal-400 hover:bg-teal-300 text-[#07111F] font-black text-xs">+ Adicionar recorrência</button>
+              </form>
+              <p className="mt-3 text-[11px] text-amber-200/90">Se uma conta já foi cadastrada manualmente neste mês, confira antes de adicionar a regra para não registrar duas vezes. Contas aqui aparecem no cronograma; despesas mestre continuam apenas no planejamento por fase.</p>
+            </div>
+            <div className="bg-[#121F31] rounded-2xl border border-[#294357] overflow-hidden">
+              <div className="px-5 py-4 border-b border-[#294357] flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white">Regras cadastradas</h3>
+                <span className="text-xs text-slate-400">{recurringRules.length} regras</span>
+              </div>
+              {recurringRules.length === 0 ? <p className="p-5 text-xs text-slate-400">Nenhuma recorrência cadastrada. Adicione uma regra para começar.</p> : (
+                <div className="divide-y divide-[#294357]">
+                  {recurringRules.map(rule => (
+                    <div key={rule.id} className="px-5 py-4 flex flex-wrap items-center gap-3 justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-white">{rule.description}</p>
+                        <p className="text-xs text-slate-400 mt-1">{rule.type === 'income' ? 'Entrada' : 'Pagamento'} • {fmt(rule.amount)} • dia {rule.day} • desde {rule.startMonth}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => setRecurringRules(prev => prev.map(x => x.id === rule.id ? {...x, enabled: !x.enabled} : x))}
+                          className={`text-xs font-bold px-3 py-1.5 rounded-lg border ${rule.enabled ? 'border-emerald-400/40 text-emerald-200 bg-emerald-500/10' : 'border-slate-500 text-slate-300'}`}>
+                          {rule.enabled ? 'Ativa' : 'Pausada'}
+                        </button>
+                        <button type="button" onClick={() => handleRemoveRecurring(rule.id)} aria-label={`Excluir recorrência ${rule.description}`} className="text-rose-300 text-xs border border-rose-500/30 px-3 py-1.5 rounded-lg hover:bg-rose-900/30">Excluir</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
         )}
@@ -3118,6 +3308,10 @@ export default function App() {
                   </select>
                 </div>
               </div>
+              <label className="flex items-center gap-2 text-xs text-slate-300">
+                <input type="checkbox" checked={Boolean(newInc.isReceived)} onChange={e => setNewInc(prev => ({ ...prev, isReceived: e.target.checked }))} className="accent-teal-400" />
+                O dinheiro já entrou na conta
+              </label>
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"

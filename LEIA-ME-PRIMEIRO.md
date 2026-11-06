@@ -1,8 +1,15 @@
-# NÓS | Financeiro — versão independente para GitHub Pages
+# NÓS | Financeiro
 
-Este projeto foi adaptado do dashboard React criado no Gemini. Mantém as nove abas originais e pode ser desenvolvido e publicado sem Gemini. **Os dados pessoais antigos não foram incluídos nos arquivos deste pacote.**
+Este projeto foi adaptado do dashboard React criado no Gemini. Mantém as funcionalidades originais e acrescenta recorrências, histórico e visão de caixa realizado. Pode ser desenvolvido e publicado sem Gemini. **Os dados pessoais antigos não foram incluídos nos arquivos deste pacote.**
 
 ## O que mudou
+
+- Aba **Recorrências** para cadastrar salários e pagamentos mensais, com geração ao visitar cada mês, proteção contra duplicatas e pausa/remoção de regras.
+- Receita **prevista** separada de **confirmada**; entradas de backup antigo ficam como previstas até serem marcadas como recebidas.
+- **Saldo confirmado**, a diferença entre receitas confirmadas e contas quitadas do cronograma, sem dupla contagem das despesas mestre.
+- Histórico visual dos últimos 12 meses considerando lançamentos existentes, confirmado e planejado.
+- Importação de JSON com validação de IDs duplicados, datas, valores e estrutura antes da confirmação.
+- Avisos para abates manuais superiores a pagamentos e receitas com alocação superior ao valor recebido.
 
 - Nova identidade visual: verde-água, azul-petróleo e detalhes violeta.
 - Corrigidos os totais de receitas/pagamentos para respeitar o mês selecionado e removidos valores salariais fixos nos comparativos.
@@ -52,8 +59,20 @@ Clique em **Carregar**. O formato do arquivo JSON exportado pela versão anterio
 - Não há banco de dados, login ou sincronização automática entre vocês dois.
 - Não há cotações automáticas de ações; os preços são manuais.
 - Projeções de retorno e dividendos são cenários hipotéticos, não promessas.
-- Despesas são ainda organizadas por fase, pois os lançamentos antigos não trazem data por despesa.
+- Despesas mestre continuam organizadas por fase. O fluxo de caixa e o histórico usam somente os lançamentos datados de receitas e cronograma; não somam despesas mestre de novo.
+- Recorrências criam entradas somente nos meses visitados; não são projetadas retroativamente para os 12 meses do gráfico.
+- Uma receita legada sem confirmação é tratada como **prevista**, mesmo se a data for passada. Marque manualmente como recebida para entrar no saldo confirmado.
 - Não há proteção de privacidade contra quem utiliza o mesmo computador/perfil do navegador.
+
+## Testes antes da publicação
+
+```bash
+npm install
+npm test
+npm run build
+```
+
+A branch de revisão tem um workflow de CI para executar testes e build; isso **não publica** o site automaticamente.
 
 ## Validação realizada neste ambiente
 
