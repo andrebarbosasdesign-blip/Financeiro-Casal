@@ -31,9 +31,11 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Construir o site
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
-        run: npm run build
+          # Chave pública do Supabase: visível no navegador por definição, protegida por RLS.
+          # Nunca colocar chave service_role ou sb_secret_ no repositório.
+          VITE_SUPABASE_URL: https://ilspratkyjzzjivgqihz.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_I8NBjrDdfu1xwuL3LRlj2g_Bz2DGMXJ
+        run: npm run test && npm run build
       - name: Configurar Pages
         uses: actions/configure-pages@v5
       - name: Enviar arquivos estáticos
