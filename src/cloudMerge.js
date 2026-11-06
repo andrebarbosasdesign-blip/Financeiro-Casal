@@ -6,7 +6,7 @@ export const SHARED_KEYS = [
   'app_credit_cards_v11', 'app_card_subs_v11', 'app_voce_aporte_v11',
   'app_portfolio_assets_v11', 'app_goals_list_v11', 'app_incomes_list_v11',
   'app_expenses_list_v11', 'app_payment_checklist_v11',
-  'app_recurring_rules_v1', 'app_recurring_skipped_v1',
+  'app_recurring_rules_v1', 'app_recurring_skipped_v1', 'app_month_closings_v1',
   'app_emergency_current_v1', 'app_emergency_months_v1',
   'app_early_payoff_v1', 'app_target_weights_v1',
   'app_sim_yield_v11', 'app_dividend_yield_v1', 'app_sim_years_v11',
