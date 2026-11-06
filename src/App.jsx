@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSharedContext } from './SharedContext.js';
+import { SHARED_KEY_SET } from './cloudMerge.js';
+import CloudToolbar from './CloudToolbar.jsx';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -190,6 +193,8 @@ const CHART_COLORS = ['#2DD4BF', '#5EEAD4', '#38BDF8', '#818CF8', '#34D399', '#F
 
 // --- HELPER HOOK FOR PERSISTENT STORAGE ---
 function useLocalStorageState(key, defaultValue) {
+  const shared = useSharedContext();
+  const isShared = Boolean(shared && SHARED_KEY_SET.has(key));
   const [state, setState] = useState(() => {
     try {
       if (typeof window !== 'undefined') {
@@ -205,6 +210,7 @@ function useLocalStorageState(key, defaultValue) {
   });
 
   useEffect(() => {
+    if (isShared) return;
     try {
       if (typeof window !== 'undefined') {
         const serialized = JSON.stringify(state);
@@ -214,8 +220,9 @@ function useLocalStorageState(key, defaultValue) {
     } catch (e) {
       console.error(`Erro ao salvar ${key} no storage:`, e);
     }
-  }, [key, state]);
+  }, [key, state, isShared]);
 
+  if (isShared) return [Object.prototype.hasOwnProperty.call(shared.data, key) ? shared.data[key] : defaultValue, (update) => shared.set(key, prev => typeof update === 'function' ? update(prev === undefined ? defaultValue : prev) : update)];
   return [state, setState];
 }
 
@@ -250,6 +257,7 @@ const getDueDateAlertStatus = (dueDateStr, isPaid) => {
 
 // --- MAIN REACT APPLICATION COMPONENT ---
 export default function App() {
+  const sharedCloud = useSharedContext();
   const [activeTab, setActiveTab] = useLocalStorageState('app_active_tab_v11', 'dashboard');
   const [selectedPhase, setSelectedPhase] = useLocalStorageState('app_selected_phase_v11', 1);
   const [selectedMonth, setSelectedMonth] = useLocalStorageState('app_selected_month_v1', getLocalMonthString());
@@ -1107,7 +1115,7 @@ export default function App() {
       fileReader.onload = (e) => {
         try {
           const parsed = validateFinanceBackup(JSON.parse(e.target.result));
-          if (!window.confirm(`Restaurar o backup com ${parsed.incomesList.length} receitas, ${parsed.expensesList.length} despesas e ${parsed.paymentChecklist.length} pagamentos? Isso substituirá os dados atuais neste navegador.`)) return;
+          if (!window.confirm(`Restaurar o backup com ${parsed.incomesList.length} receitas, ${parsed.expensesList.length} despesas e ${parsed.paymentChecklist.length} pagamentos? Isso substituirá os dados atuais ${sharedCloud ? 'para os dois participantes' : 'neste navegador'}.`)) return;
           if (parsed.recurringRules) setRecurringRules(parsed.recurringRules);
           else setRecurringRules([]);
           if (parsed.recurringSkipped) setRecurringSkipped(parsed.recurringSkipped);
@@ -1144,7 +1152,8 @@ export default function App() {
   };
 
   const handleResetToDefaults = () => {
-    if (window.confirm('ATENÇÃO: deseja apagar seus lançamentos locais e voltar ao modelo vazio? Exporte um backup JSON antes de continuar.')) {
+    if (sharedCloud && !window.confirm('ATENÇÃO: isso apaga os lançamentos compartilhados dos DOIS participantes. Faça um backup antes. Deseja continuar?')) return;
+    if (window.confirm('ATENÇÃO: deseja apagar os lançamentos e voltar ao modelo vazio? Exporte um backup JSON antes de continuar.')) {
       setCardSubs(INITIAL_CREDIT_CARD_SUBSCRIPTIONS);
       setRecurringRules([]);
       setRecurringSkipped([]);
@@ -1193,12 +1202,13 @@ export default function App() {
 
         {/* FERRAMENTAS DE BACKUP E SALVAMENTO */}
         <div className="flex flex-wrap items-center gap-2">
+          <CloudToolbar />
           <div className="text-right hidden lg:block mr-2">
             <span className="text-[10px] text-emerald-400 font-bold block flex items-center justify-end gap-1">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              ✓ Salvo às {lastSaved || 'agora'}
+              {sharedCloud ? '☁ Salvo na nuvem' : `✓ Salvo às ${lastSaved || 'agora'}`}
             </span>
-            <span className="text-[10px] text-[#94A3B8]">Armazenado apenas neste navegador • Faça backups regularmente</span>
+            <span className="text-[10px] text-[#94A3B8]">{sharedCloud ? 'Compartilhado com participantes autorizados • mantenha backups' : 'Armazenado apenas neste navegador • Faça backups regularmente'}</span>
           </div>
 
           <button

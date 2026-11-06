@@ -78,3 +78,9 @@ A branch de revisão tem um workflow de CI para executar testes e build; isso **
 ## Validação realizada neste ambiente
 
 Sintaxe JSX/JavaScript inspecionada por transpilição com TypeScript; testes básicos das funções de renderização e leitura do backup rodados localmente quando possível. **Não foi possível executar `npm install`/build completo aqui porque o registro npm não estava acessível neste ambiente.** O GitHub Actions está configurado para instalar as dependências na publicação; confira o resultado da execução para confirmar.
+
+## Compartilhamento e sincronização
+
+Esta revisão inclui login Supabase, convite restrito ao e-mail e sincronização da mesma carteira entre dois usuários. **A função só estará ativa depois de configurar um projeto Supabase e as variáveis GitHub Actions.** Consulte `CONFIGURAR-ACESSO-COMPARTILHADO.md` e execute `supabase_setup.sql` antes de publicar.
+
+**Jamais envie o arquivo de backup JSON financeiro, senha ou chave service_role para o repositório GitHub.** Sem URL e publishable key, o dashboard continua funcionando apenas como demonstração local, sem sincronização.
