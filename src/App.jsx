@@ -15,7 +15,7 @@ import {
   Tooltip,
   Legend
 } from 'recharts';
-import { buildRecurringEntries, cashHistory, monthCashSummary, allocationWarnings, validateFinanceBackup } from './financeUtils.js';
+import { buildRecurringEntries, cashHistory, monthCashSummary, allocationWarnings, validateFinanceBackup, DEFAULT_CREDIT_CARDS, reconcileCreditCards } from './financeUtils.js';
 
 
 // ============================================================================
@@ -176,10 +176,7 @@ const INITIAL_GOALS = [
 ];
 const INITIAL_EXPENSES = [];
 const INITIAL_CREDIT_CARD_SUBSCRIPTIONS = [];
-const INITIAL_CARDS = [
-  { id: 'card-1', name: 'Cartão 1', owner: 'Você', limit: 0 },
-  { id: 'card-2', name: 'Cartão 2', owner: 'Ela', limit: 0 }
-];
+const INITIAL_CARDS = DEFAULT_CREDIT_CARDS;
 const INITIAL_INCOMES = [];
 const INITIAL_PAYMENT_SCHEDULE = [];
 
@@ -261,6 +258,11 @@ export default function App() {
 
   // Persistent States
   const [creditCards, setCreditCards] = useLocalStorageState('app_credit_cards_v11', INITIAL_CARDS);
+  // Corrige as instalações antigas que guardaram só dois cartões no navegador.
+  // Mantém IDs e limites, sem apagar gastos ou assinaturas já vinculados.
+  useEffect(() => {
+    setCreditCards(current => reconcileCreditCards(current));
+  }, []);
   const [cardSubs, setCardSubs] = useLocalStorageState('app_card_subs_v11', INITIAL_CREDIT_CARD_SUBSCRIPTIONS);
   const [voceAporte, setVoceAporte] = useLocalStorageState('app_voce_aporte_v11', 450.00);
   const [portfolioAssets, setPortfolioAssets] = useLocalStorageState('app_portfolio_assets_v11', INITIAL_PORTFOLIO_ASSETS);
@@ -1123,7 +1125,7 @@ export default function App() {
           if (parsed.annualStepUp !== undefined) setAnnualStepUp(parsed.annualStepUp);
           if (parsed.maxMonthlyContribution !== undefined) setMaxMonthlyContribution(parsed.maxMonthlyContribution);
           if (parsed.realizedDeposits) setRealizedDeposits(parsed.realizedDeposits);
-          if (parsed.creditCards) setCreditCards(parsed.creditCards);
+          setCreditCards(reconcileCreditCards(parsed.creditCards));
           if (parsed.voceAporte !== undefined) setVoceAporte(parsed.voceAporte);
           if (parsed.emergencyCurrent !== undefined) setEmergencyCurrent(parsed.emergencyCurrent);
           if (parsed.emergencyTargetMonths !== undefined) setEmergencyTargetMonths(parsed.emergencyTargetMonths);
