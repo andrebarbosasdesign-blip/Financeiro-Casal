@@ -1,6 +1,47 @@
 /** Regras independentes da interface: sem rede, sem dados pessoais e testáveis com Node. */
 export const money = (value) => Math.max(0, Number(value) || 0);
 export const periodOf = (value) => (typeof value === 'string' ? value.slice(0, 7) : '');
+
+/** Quatro cartões esperados no painel (apenas nomes, sem dados pessoais ou valores). */
+export const DEFAULT_CREDIT_CARDS = [
+  { id: 'card-1', name: 'Meu Cartão Nubank', owner: 'Você', limit: 0 },
+  { id: 'card-2', name: 'Cartão Nubank Dela', owner: 'Ela', limit: 0 },
+  { id: 'card-3', name: 'Cartão Inter Dela', owner: 'Ela', limit: 0 },
+  { id: 'card-4', name: 'Cartão Renner Dela', owner: 'Ela', limit: 0 }
+];
+
+/**
+ * Migra os dois cartões genéricos de versões anteriores, completa os cartões
+ * ausentes e mantém limites, IDs e assinaturas já vinculadas. É idempotente.
+ * Nunca remove cartões extras criados pelo usuário.
+ */
+export function reconcileCreditCards(cards) {
+  const existing = Array.isArray(cards) ? cards : [];
+  const result = [...existing];
+  let modified = !Array.isArray(cards);
+  for (const defaultCard of DEFAULT_CREDIT_CARDS) {
+    const index = result.findIndex(card => card && card.id === defaultCard.id);
+    if (index >= 0) {
+      const saved = result[index];
+      const oldPlaceholder = (defaultCard.id === 'card-1' && saved.name === 'Cartão 1') ||
+        (defaultCard.id === 'card-2' && saved.name === 'Cartão 2');
+      if (oldPlaceholder) {
+        result[index] = { ...saved, name: defaultCard.name, owner: defaultCard.owner };
+        modified = true;
+      }
+      continue;
+    }
+    const bank = defaultCard.name.match(/Nubank|Inter|Renner/i)?.[0].toLowerCase();
+    // Respeita eventuais IDs personalizados de um cartão já existente.
+    const alreadyPresent = result.some(card => card?.owner === defaultCard.owner &&
+      String(card.name || '').toLowerCase().includes(bank));
+    if (!alreadyPresent) {
+      result.push({ ...defaultCard });
+      modified = true;
+    }
+  }
+  return modified ? result : cards;
+}
 export const monthDate = (month, day = 1) => {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Mês inválido');
   const [year, m] = month.split('-').map(Number);
