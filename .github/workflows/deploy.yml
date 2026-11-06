@@ -1,0 +1,47 @@
+name: Publicar NÓS Financeiro no GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Baixar repositório
+        uses: actions/checkout@v4
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar dependências
+        run: npm install --no-audit --no-fund
+      - name: Construir o site
+        env:
+          # Chave pública do Supabase: visível no navegador por definição, protegida por RLS.
+          # Nunca colocar chave service_role ou sb_secret_ no repositório.
+          VITE_SUPABASE_URL: https://ilspratkyjzzjivgqihz.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_I8NBjrDdfu1xwuL3LRlj2g_Bz2DGMXJ
+        run: npm run test && npm run build
+      - name: Configurar Pages
+        uses: actions/configure-pages@v5
+      - name: Enviar arquivos estáticos
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+      - name: Publicar no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

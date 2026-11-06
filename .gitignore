@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.local
+*backup*.json
+*Backup*.json
+financeiro_*.json
+.DS_Store
