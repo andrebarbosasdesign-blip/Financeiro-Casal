@@ -55,7 +55,7 @@ export function makeMonthClosing(month, finances, oldClosing, updatedAt = new Da
   const entries=(finances.paymentChecklist||[]).filter(p=>periodOf(p.dueDate)===month);
   const incomeEntries=(finances.incomesList||[]).filter(i=>periodOf(i.date)===month);
   return {
-    month, ...summary,
+    id:month, month, ...summary,
     paidCount:entries.filter(p=>p.isPaid).length,
     paymentCount:entries.length,
     receivedCount:incomeEntries.filter(i=>i.isReceived).length,
